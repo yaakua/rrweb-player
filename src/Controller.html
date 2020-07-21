@@ -1,4 +1,4 @@
-{#if showController}
+<script src="../dist/index.js"></script>{#if showController}
 <div class="rr-controller">
   <div class="rr-timeline">
     <span class="rr-timeline__time">{formatTime(currentTime)}</span>
@@ -64,7 +64,7 @@
       {s}x
     </button>
     {/each}
-    <Switch id="skip" bind:checked="skipInactive" disabled="{isSkipping}" label="skip inactive" />
+    <Switch id="skip" bind:checked="skipInactive" disabled="{isSkipping}" label="跳过不活动" />
     <button on:click="fire('fullscreen')">
       <svg
         class="icon"
@@ -109,6 +109,9 @@
       },
       getCustomEvents({tags, replayer}) {
         const { events } = replayer;
+        if(!events){
+          return [];
+        }
         const totalEvents = events.length;
         const start = events[0].timestamp;
         const end = events[totalEvents - 1].timestamp;
@@ -319,7 +322,7 @@
     position: absolute;
     left: 0;
     top: 0;
-    background: #e0e1fe;
+    background: rgba(56, 172, 129, 0.3);;
   }
 
   .rr-progress__handler {
@@ -329,7 +332,7 @@
     position: absolute;
     top: 2px;
     transform: translate(-50%, -50%);
-    background: rgb(73, 80, 246);
+    background: rgb(56, 172, 129);
   }
 
   .rr-controller__btns {
@@ -358,10 +361,12 @@
 
   .rr-controller__btns button.active {
     color: #fff;
-    background: rgb(73, 80, 246);
+    background: rgb(56, 172, 129);
   }
 
   .rr-controller__btns button:disabled {
     cursor: not-allowed;
   }
+
+
 </style>
