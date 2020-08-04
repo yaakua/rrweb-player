@@ -1,3 +1,19 @@
+# 使用说明
+- `npm install` 安装依赖文件
+- `npm run dev` 后修改任何js代码会自动编译
+- `npm run build` 构建最终文件，将最终文件copy到项目当中
+
+# 修改部分
+- 增加insertStyleRules属性，允许调用方传递该属性
+- 增加getCurrentTime()允许调用方获取当前正在播放的时刻
+
+![示例代码](./image/rrweb-play.png)
+
+
+
+
+
+
 *Psst — looking for a shareable component template? Go here --> [sveltejs/component-template](https://github.com/sveltejs/component-template)*
 
 ---

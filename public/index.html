@@ -23,9 +23,26 @@
           showDebug: false,
           autoPlay: false,
           showWarning: false,
+          insertStyleRules:[
+            `.play_hidden {display:none !important}`,
+            `.play_show {display:block !important}`,
+          ],
         },
       });
-      component.addEventListener('finish', () => console.log('finish'));
+
+      let interval = null;
+      component.addEventListener('finish', () =>{
+        if(interval!=null){
+          window.clearInterval(interval);
+        }
+        console.log('finish')
+      });
+      component.addEventListener('start', () => {
+        interval =  window.setInterval(()=>{
+          console.log("currentTime",component.getCurrentTime());
+        },1000);
+        console.log('start')
+      });
     </script>
   </body>
 </html>
