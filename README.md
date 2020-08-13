@@ -5,7 +5,13 @@
 
 # 修改部分
 - 增加insertStyleRules属性，允许调用方传递该属性
+- 增加customSyts属性，允许调方传递该属性，解决insertStyleRules偶尔无效问题
 - 增加getCurrentTime()允许调用方获取当前正在播放的时刻
+# 注意事项
+- 当前工程fork 自https://github.com/rrweb-io/rrweb-player 如果需要同步，可以通过发起pr方式将master分支合并到本参考
+- 当前工程引用的rrweb代码是直接采用自己编译过的rrweb-all.js文件，如有rrweb框架改动，也需要重新编译rrweb打包后将rrweb-all.js文件
+放到rrweb/目录下
+- 通过`npm run build` 构建最终文件(index.js\style.css)，将最终文件copy到action-record工程当中的backend-view/src/components/rrplayer 目录下
 
 ![示例代码](./image/rrweb-play.png)
 

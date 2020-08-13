@@ -8,9 +8,14 @@
 
     <link rel="stylesheet" href="./global.css" />
     <link rel="stylesheet" href="./bundle.css" />
+    <script>
+
+    </script>
   </head>
 
   <body>
+ <label>开始时间:</label> <input type="text" id="timeOffset">
+ <button onclick="resetPlayTime()">重设播放开始位置</button>
     <script src="./bundle.js"></script>
     <script src="./events.js"></script>
     <script>
@@ -23,10 +28,12 @@
           showDebug: false,
           autoPlay: false,
           showWarning: false,
-          insertStyleRules:[
-            `.play_hidden {display:none !important}`,
-            `.play_show {display:block !important}`,
-          ],
+          //自定义播放时，某些组件不显示或者显示
+          customStyles:`
+                     .play_hidden {display:none !important;}
+                     .play_show {display:block !important;}
+                        .mui-checkbox input[type="checkbox"] {height:48px !important;}
+                    `
         },
       });
 
@@ -43,6 +50,11 @@
         },1000);
         console.log('start')
       });
+
+      function resetPlayTime() {
+        var timeOffset = document.getElementById("timeOffset").value;
+        component.reset(timeOffset);
+      }
     </script>
   </body>
 </html>

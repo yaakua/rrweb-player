@@ -83,7 +83,8 @@
 {/if}
 
 <script>
-  import { EventType } from 'rrweb';
+  import rrweb from '../rrweb/rrweb-all.js';
+
   import { formatTime } from './utils.js';
 
   export default {
@@ -133,7 +134,7 @@
            * we are only interested in custom event and calculate it's position
            * to place it in player's timeline.
            */
-          if (event.type === EventType.Custom) {
+          if (event.type === rrweb.EventType.Custom) {
             const customEvent = {
               name: event.data.tag,
               background: tags[event.data.tag] || 'rgb(73, 80, 246)',
@@ -195,13 +196,25 @@
           this.play();
         }
       },
+      //跳转到指定位置进行播放
+      resume(offsetTime){
+        const { replayer, currentTime, isPlaying } = this.get();
+        // freeze before set speed, and resume if is playing before freeze
+        replayer.pause();
+        this.set({ currentTime:offsetTime });
+        if (isPlaying) {
+          replayer.resume(offsetTime);
+        }
+      },
       setSpeed(speed) {
+        console.log("#####setSpeed",speed);
         const { replayer, currentTime, isPlaying } = this.get();
         // freeze before set speed, and resume if is playing before freeze
         replayer.pause();
         replayer.setConfig({ speed });
         this.set({ speed });
         if (isPlaying) {
+          console.log("speed currentTime",currentTime);
           replayer.resume(currentTime);
         }
       },
@@ -220,6 +233,7 @@
         }
         const timeOffset = meta.totalTime * percent;
         this.set({ currentTime: timeOffset });
+        console.log("###click timeOffset",timeOffset);
         replayer.play(timeOffset);
         if (!isPlaying) {
           replayer.pause();
@@ -228,6 +242,7 @@
     },
     onupdate({ changed, current, previous }) {
       if (current.replayer && !previous) {
+        console.log("#####onupdate")
         window.replayer = current.replayer;
         setTimeout(() => {
           this.set({ isPlaying: true });

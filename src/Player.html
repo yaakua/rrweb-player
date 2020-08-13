@@ -17,8 +17,9 @@
 </div>
 
 <script>
-  import { Replayer, unpack } from 'rrweb';
-  import 'rrweb/dist/rrweb.min.css';
+  // import { Replayer, unpack } from '../rrweb/rrweb-all.js';
+  import rrweb from '../rrweb/rrweb-all.js';
+  import '../rrweb/rrweb-all.min.css';
   import {
     inlineCss,
     openFullscreen,
@@ -47,7 +48,8 @@
         skipInactive: true,
         speedOption: [1, 2, 3],
         speed: 1,
-          insertStyleRules:[]
+        insertStyleRules:[],
+        customStyles:'',
       };
     },
     computed: {
@@ -90,10 +92,15 @@
           return replayer.timer.timeOffset + replayer.getTimeOffset();
         }
        return null;
-      }
+      },
+      //跳转到指定位置进行播放
+      reset(offsetTime){
+        replayer.play(offsetTime);
+      },
+
     },
     oncreate() {
-      const { events, triggerFocus, showWarning, showDebug, speedOption,insertStyleRules } = this.get();
+      const { events, triggerFocus, showWarning, showDebug, speedOption,insertStyleRules,customStyles } = this.get();
       let { skipInactive, speed } = this.get();
       skipInactive = skipInactive === undefined ? true : !!skipInactive;
       speed = speed === undefined ? 1 : speed;
@@ -117,15 +124,16 @@
         }
         `);
       }
-      const replayer = new Replayer(events, {
+      const replayer = new rrweb.Replayer(events, {
         speed: speed === undefined ? 1 : speed,
         root: this.refs.frame,
         skipInactive,
         showWarning: showWarning === undefined ? true : !!showWarning,
         showDebug: showDebug === undefined ? true : !!showDebug,
         triggerFocus,
-        unpackFn: unpack,
+        unpackFn: rrweb.unpack,
         insertStyleRules,
+        customStyles: customStyles
       });
       replayer.on('resize', (dimension) =>
         this.updateScale(replayer.wrapper, dimension),
