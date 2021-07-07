@@ -1079,6 +1079,7 @@ var rrweb = (function (exports) {
         ReplayerEvents["EventCast"] = "event-cast";
         ReplayerEvents["CustomEvent"] = "custom-event";
         ReplayerEvents["Flush"] = "flush";
+        ReplayerEvents["StateChange"] = "state-change";
     })(exports.ReplayerEvents || (exports.ReplayerEvents = {}));
 
     function on(type, fn, target) {
@@ -2724,11 +2725,11 @@ var rrweb = (function (exports) {
     var smoothscroll_1 = smoothscroll.polyfill;
 
     var Timer = (function () {
-        function Timer(config, actions) {
+        function Timer(actions, speed) {
             if (actions === void 0) { actions = []; }
             this.timeOffset = 0;
             this.actions = actions;
-            this.config = config;
+            this.speed = speed;
         }
         Timer.prototype.addAction = function (action) {
             var index = this.findActionIndex(action);
@@ -2742,10 +2743,10 @@ var rrweb = (function (exports) {
             this.actions.sort(function (a1, a2) { return a1.delay - a2.delay; });
             this.timeOffset = 0;
             var lastTimestamp = performance.now();
-            var _a = this, actions = _a.actions, config = _a.config;
+            var actions = this.actions;
             var self = this;
             function check(time) {
-                self.timeOffset += (time - lastTimestamp) * config.speed;
+                self.timeOffset += (time - lastTimestamp) * self.speed;
                 lastTimestamp = time;
                 while (actions.length) {
                     var action = actions[0];
@@ -2757,7 +2758,7 @@ var rrweb = (function (exports) {
                         break;
                     }
                 }
-                if (actions.length > 0 || self.config.liveMode) {
+                if (actions.length > 0 || self.liveMode) {
                     self.raf = requestAnimationFrame(check);
                 }
             }
@@ -2768,6 +2769,12 @@ var rrweb = (function (exports) {
                 cancelAnimationFrame(this.raf);
             }
             this.actions.length = 0;
+        };
+        Timer.prototype.setSpeed = function (speed) {
+            this.speed = speed;
+        };
+        Timer.prototype.toggleLiveMode = function (mode) {
+            this.liveMode = mode;
         };
         Timer.prototype.findActionIndex = function (action) {
             var start = 0;
@@ -2788,7 +2795,7 @@ var rrweb = (function (exports) {
         };
         return Timer;
     }());
-    function getDelay(event, baselineTime) {
+    function addDelay(event, baselineTime) {
         if (event.type === exports.EventType.IncrementalSnapshot &&
             event.data.source === exports.IncrementalSource.MouseMove) {
             var firstOffset = event.data.positions[0].timeOffset;
@@ -2797,7 +2804,7 @@ var rrweb = (function (exports) {
             return firstTimestamp - baselineTime;
         }
         event.delay = event.timestamp - baselineTime;
-        return event.timestamp - baselineTime;
+        return event.delay;
     }
 
     /*! *****************************************************************************
@@ -2832,37 +2839,27 @@ var rrweb = (function (exports) {
         var playerMachine = c({
             id: 'player',
             context: context,
-            initial: 'inited',
+            initial: 'paused',
             states: {
-                inited: {
-                    on: {
-                        PLAY: {
-                            target: 'playing',
-                            actions: ['recordTimeOffset', 'play'],
-                        },
-                        TO_LIVE: {
-                            target: 'live',
-                            actions: ['startLive'],
-                        },
-                    },
-                },
                 playing: {
                     on: {
                         PAUSE: {
                             target: 'paused',
                             actions: ['pause'],
                         },
-                        END: 'ended',
-                        FAST_FORWARD: 'skipping',
                         CAST_EVENT: {
                             target: 'playing',
                             actions: 'castEvent',
+                        },
+                        END: {
+                            target: 'paused',
+                            actions: ['resetLastPlayedEvent', 'pause'],
                         },
                     },
                 },
                 paused: {
                     on: {
-                        RESUME: {
+                        PLAY: {
                             target: 'playing',
                             actions: ['recordTimeOffset', 'play'],
                         },
@@ -2870,16 +2867,6 @@ var rrweb = (function (exports) {
                             target: 'paused',
                             actions: 'castEvent',
                         },
-                    },
-                },
-                skipping: {
-                    on: {
-                        BACK_TO_NORMAL: 'playing',
-                    },
-                },
-                ended: {
-                    on: {
-                        REPLAY: 'playing',
                     },
                 },
                 live: {
@@ -2898,7 +2885,7 @@ var rrweb = (function (exports) {
                         if (event.type === 'CAST_EVENT') {
                             return event.payload.event;
                         }
-                        return context.lastPlayedEvent;
+                        return ctx.lastPlayedEvent;
                     },
                 }),
                 recordTimeOffset: r(function (ctx, event) {
@@ -2909,14 +2896,27 @@ var rrweb = (function (exports) {
                     return __assign(__assign({}, ctx), { timeOffset: timeOffset, baselineTime: ctx.events[0].timestamp + timeOffset });
                 }),
                 play: function (ctx) {
-                    var e_1, _a;
+                    var e_1, _a, e_2, _b;
                     var timer = ctx.timer, events = ctx.events, baselineTime = ctx.baselineTime, lastPlayedEvent = ctx.lastPlayedEvent;
                     timer.clear();
+                    try {
+                        for (var events_1 = __values(events), events_1_1 = events_1.next(); !events_1_1.done; events_1_1 = events_1.next()) {
+                            var event = events_1_1.value;
+                            addDelay(event, baselineTime);
+                        }
+                    }
+                    catch (e_1_1) { e_1 = { error: e_1_1 }; }
+                    finally {
+                        try {
+                            if (events_1_1 && !events_1_1.done && (_a = events_1.return)) _a.call(events_1);
+                        }
+                        finally { if (e_1) throw e_1.error; }
+                    }
                     var neededEvents = discardPriorSnapshots(events, baselineTime);
                     var actions = new Array();
                     var _loop_1 = function (event) {
                         if (lastPlayedEvent &&
-                            lastPlayedEvent.timestamp > baselineTime &&
+                            lastPlayedEvent.timestamp < baselineTime &&
                             (event.timestamp <= lastPlayedEvent.timestamp ||
                                 event === lastPlayedEvent)) {
                             return "continue";
@@ -2935,7 +2935,7 @@ var rrweb = (function (exports) {
                                     castFn();
                                     emitter.emit(exports.ReplayerEvents.EventCast, event);
                                 },
-                                delay: getDelay(event, baselineTime),
+                                delay: event.delay,
                             });
                         }
                     };
@@ -2945,12 +2945,12 @@ var rrweb = (function (exports) {
                             _loop_1(event);
                         }
                     }
-                    catch (e_1_1) { e_1 = { error: e_1_1 }; }
+                    catch (e_2_1) { e_2 = { error: e_2_1 }; }
                     finally {
                         try {
-                            if (neededEvents_1_1 && !neededEvents_1_1.done && (_a = neededEvents_1.return)) _a.call(neededEvents_1);
+                            if (neededEvents_1_1 && !neededEvents_1_1.done && (_b = neededEvents_1.return)) _b.call(neededEvents_1);
                         }
-                        finally { if (e_1) throw e_1.error; }
+                        finally { if (e_2) throw e_2.error; }
                     }
                     emitter.emit(exports.ReplayerEvents.Flush);
                     timer.addActions(actions);
@@ -2959,8 +2959,12 @@ var rrweb = (function (exports) {
                 pause: function (ctx) {
                     ctx.timer.clear();
                 },
+                resetLastPlayedEvent: r(function (ctx) {
+                    return __assign(__assign({}, ctx), { lastPlayedEvent: null });
+                }),
                 startLive: r({
                     baselineTime: function (ctx, event) {
+                        ctx.timer.toggleLiveMode(true);
                         ctx.timer.start();
                         if (event.type === 'TO_LIVE' && event.payload.baselineTime) {
                             return event.payload.baselineTime;
@@ -2972,6 +2976,7 @@ var rrweb = (function (exports) {
                     var baselineTime = ctx.baselineTime, timer = ctx.timer, events = ctx.events;
                     if (machineEvent.type === 'ADD_EVENT') {
                         var event_1 = machineEvent.payload.event;
+                        addDelay(event_1, baselineTime);
                         events.push(event_1);
                         var isSync = event_1.timestamp < baselineTime;
                         var castFn_1 = getCastFn(event_1, isSync);
@@ -2984,7 +2989,7 @@ var rrweb = (function (exports) {
                                     castFn_1();
                                     emitter.emit(exports.ReplayerEvents.EventCast, event_1);
                                 },
-                                delay: getDelay(event_1, baselineTime),
+                                delay: event_1.delay,
                             });
                         }
                     }
@@ -2993,6 +2998,54 @@ var rrweb = (function (exports) {
             },
         });
         return f(playerMachine);
+    }
+    function createSpeedService(context) {
+        var speedMachine = c({
+            id: 'speed',
+            context: context,
+            initial: 'normal',
+            states: {
+                normal: {
+                    on: {
+                        FAST_FORWARD: {
+                            target: 'skipping',
+                            actions: ['recordSpeed', 'setSpeed'],
+                        },
+                        SET_SPEED: {
+                            target: 'normal',
+                            actions: ['setSpeed'],
+                        },
+                    },
+                },
+                skipping: {
+                    on: {
+                        BACK_TO_NORMAL: {
+                            target: 'normal',
+                            actions: ['restoreSpeed'],
+                        },
+                        SET_SPEED: {
+                            target: 'normal',
+                            actions: ['setSpeed'],
+                        },
+                    },
+                },
+            },
+        }, {
+            actions: {
+                setSpeed: function (ctx, event) {
+                    if ('payload' in event) {
+                        ctx.timer.setSpeed(event.payload.speed);
+                    }
+                },
+                recordSpeed: r({
+                    normalSpeed: function (ctx) { return ctx.timer.speed; },
+                }),
+                restoreSpeed: function (ctx) {
+                    ctx.timer.setSpeed(ctx.normalSpeed);
+                },
+            },
+        });
+        return f(speedMachine);
     }
 
     var rules = function (blockClass) { return [
@@ -3021,7 +3074,6 @@ var rrweb = (function (exports) {
         function Replayer(events, config) {
             var _this = this;
             this.emitter = mitt$1();
-            this.noramlSpeed = -1;
             this.legacy_missingNodeRetryMap = {};
             if (!(config === null || config === void 0 ? void 0 : config.liveMode) && events.length < 2) {
                 throw new Error('Replayer need at least 2 events.');
@@ -3085,6 +3137,7 @@ var rrweb = (function (exports) {
                 }
                 _this.fragmentParentMap.clear();
             });
+            var timer = new Timer([], (config === null || config === void 0 ? void 0 : config.speed) || defaultConfig.speed);
             this.service = createPlayerService({
                 events: events.map(function (e) {
                     if (config && config.unpackFn) {
@@ -3092,8 +3145,7 @@ var rrweb = (function (exports) {
                     }
                     return e;
                 }),
-                timer: new Timer(this.config),
-                speed: (config === null || config === void 0 ? void 0 : config.speed) || defaultConfig.speed,
+                timer: timer,
                 timeOffset: 0,
                 baselineTime: 0,
                 lastPlayedEvent: null,
@@ -3103,19 +3155,30 @@ var rrweb = (function (exports) {
             });
             this.service.start();
             this.service.subscribe(function (state) {
-                if (!state.changed) {
-                    return;
-                }
-            });
-            var contextEvents = this.service.state.context.events;
-            var firstMeta = contextEvents.find(function (e) { return e.type === exports.EventType.Meta; });
-            var firstFullsnapshot = contextEvents.find(function (e) { return e.type === exports.EventType.FullSnapshot; });
-            if (firstMeta) {
-                var _a = firstMeta.data, width = _a.width, height = _a.height;
-                this.emitter.emit(exports.ReplayerEvents.Resize, {
-                    width: width,
-                    height: height,
+                _this.emitter.emit(exports.ReplayerEvents.StateChange, {
+                    player: state,
                 });
+            });
+            this.speedService = createSpeedService({
+                normalSpeed: -1,
+                timer: timer,
+            });
+            this.speedService.start();
+            this.speedService.subscribe(function (state) {
+                _this.emitter.emit(exports.ReplayerEvents.StateChange, {
+                    speed: state,
+                });
+            });
+            var firstMeta = this.service.state.context.events.find(function (e) { return e.type === exports.EventType.Meta; });
+            var firstFullsnapshot = this.service.state.context.events.find(function (e) { return e.type === exports.EventType.FullSnapshot; });
+            if (firstMeta) {
+                var _a = firstMeta.data, width_1 = _a.width, height_1 = _a.height;
+                setTimeout(function () {
+                    _this.emitter.emit(exports.ReplayerEvents.Resize, {
+                        width: width_1,
+                        height: height_1,
+                    });
+                }, 0);
             }
             if (firstFullsnapshot) {
                 this.rebuildFullSnapshot(firstFullsnapshot);
@@ -3137,13 +3200,12 @@ var rrweb = (function (exports) {
                 _this.config[key] = config[key];
             });
             if (!this.config.skipInactive) {
-                this.noramlSpeed = -1;
+                this.backToNormal();
             }
         };
         Replayer.prototype.getMetaData = function () {
-            var events = this.service.state.context.events;
-            var firstEvent = events[0];
-            var lastEvent = events[events.length - 1];
+            var firstEvent = this.service.state.context.events[0];
+            var lastEvent = this.service.state.context.events[this.service.state.context.events.length - 1];
             return {
                 startTime: firstEvent.timestamp,
                 endTime: lastEvent.timestamp,
@@ -3159,25 +3221,29 @@ var rrweb = (function (exports) {
         };
         Replayer.prototype.play = function (timeOffset) {
             if (timeOffset === void 0) { timeOffset = 0; }
-            if (this.service.state.value === 'ended') {
-                this.service.state.context.lastPlayedEvent = null;
-                this.service.send({ type: 'REPLAY' });
-            }
-            if (this.service.state.value === 'paused') {
-                this.service.send({ type: 'RESUME', payload: { timeOffset: timeOffset } });
+            if (this.service.state.matches('paused')) {
+                this.service.send({ type: 'PLAY', payload: { timeOffset: timeOffset } });
             }
             else {
+                this.service.send({ type: 'PAUSE' });
                 this.service.send({ type: 'PLAY', payload: { timeOffset: timeOffset } });
             }
             this.emitter.emit(exports.ReplayerEvents.Start);
         };
-        Replayer.prototype.pause = function () {
-            this.service.send({ type: 'PAUSE' });
+        Replayer.prototype.pause = function (timeOffset) {
+            if (timeOffset === undefined && this.service.state.matches('playing')) {
+                this.service.send({ type: 'PAUSE' });
+            }
+            if (typeof timeOffset === 'number') {
+                this.play(timeOffset);
+                this.service.send({ type: 'PAUSE' });
+            }
             this.emitter.emit(exports.ReplayerEvents.Pause);
         };
         Replayer.prototype.resume = function (timeOffset) {
             if (timeOffset === void 0) { timeOffset = 0; }
-            this.service.send({ type: 'RESUME', payload: { timeOffset: timeOffset } });
+            console.warn("The 'resume' will be departed in 1.0. Please use 'play' method which has the same interface.");
+            this.play(timeOffset);
             this.emitter.emit(exports.ReplayerEvents.Resume);
         };
         Replayer.prototype.startLive = function (baselineTime) {
@@ -3219,7 +3285,6 @@ var rrweb = (function (exports) {
         Replayer.prototype.getCastFn = function (event, isSync) {
             var _this = this;
             if (isSync === void 0) { isSync = false; }
-            var events = this.service.state.context.events;
             var castFn;
             switch (event.type) {
                 case exports.EventType.DomContentLoaded:
@@ -3248,20 +3313,24 @@ var rrweb = (function (exports) {
                     castFn = function () {
                         var e_4, _a;
                         _this.applyIncremental(event, isSync);
+                        if (isSync) {
+                            return;
+                        }
                         if (event === _this.nextUserInteractionEvent) {
                             _this.nextUserInteractionEvent = null;
-                            _this.restoreSpeed();
+                            _this.backToNormal();
                         }
                         if (_this.config.skipInactive && !_this.nextUserInteractionEvent) {
                             try {
-                                for (var events_1 = __values(events), events_1_1 = events_1.next(); !events_1_1.done; events_1_1 = events_1.next()) {
-                                    var _event = events_1_1.value;
+                                for (var _b = __values(_this.service.state.context.events), _c = _b.next(); !_c.done; _c = _b.next()) {
+                                    var _event = _c.value;
                                     if (_event.timestamp <= event.timestamp) {
                                         continue;
                                     }
                                     if (_this.isUserInteraction(_event)) {
                                         if (_event.delay - event.delay >
-                                            SKIP_TIME_THRESHOLD * _this.config.speed) {
+                                            SKIP_TIME_THRESHOLD *
+                                                _this.speedService.state.context.timer.speed) {
                                             _this.nextUserInteractionEvent = _event;
                                         }
                                         break;
@@ -3271,17 +3340,16 @@ var rrweb = (function (exports) {
                             catch (e_4_1) { e_4 = { error: e_4_1 }; }
                             finally {
                                 try {
-                                    if (events_1_1 && !events_1_1.done && (_a = events_1.return)) _a.call(events_1);
+                                    if (_c && !_c.done && (_a = _b.return)) _a.call(_b);
                                 }
                                 finally { if (e_4) throw e_4.error; }
                             }
                             if (_this.nextUserInteractionEvent) {
-                                _this.noramlSpeed = _this.config.speed;
                                 var skipTime = _this.nextUserInteractionEvent.delay - event.delay;
                                 var payload = {
                                     speed: Math.min(Math.round(skipTime / SKIP_TIME_INTERVAL), 360),
                                 };
-                                _this.setConfig(payload);
+                                _this.speedService.send({ type: 'FAST_FORWARD', payload: payload });
                                 _this.emitter.emit(exports.ReplayerEvents.SkipStart, payload);
                             }
                         }
@@ -3293,8 +3361,9 @@ var rrweb = (function (exports) {
                     castFn();
                 }
                 _this.service.send({ type: 'CAST_EVENT', payload: { event: event } });
-                if (event === events[events.length - 1]) {
-                    _this.restoreSpeed();
+                if (event ===
+                    _this.service.state.context.events[_this.service.state.context.events.length - 1]) {
+                    _this.backToNormal();
                     _this.service.send('END');
                     _this.emitter.emit(exports.ReplayerEvents.Finish);
                 }
@@ -3338,6 +3407,9 @@ var rrweb = (function (exports) {
                 var unloadSheets_1 = new Set();
                 var timer_1;
                 var beforeLoadState_1 = this.service.state;
+                var unsubscribe_1 = this.service.subscribe(function (state) {
+                    beforeLoadState_1 = state;
+                }).unsubscribe;
                 head
                     .querySelectorAll('link[rel="stylesheet"]')
                     .forEach(function (css) {
@@ -3347,12 +3419,13 @@ var rrweb = (function (exports) {
                             unloadSheets_1.delete(css);
                             if (unloadSheets_1.size === 0 && timer_1 !== -1) {
                                 if (beforeLoadState_1.matches('playing')) {
-                                    _this.resume(_this.getCurrentTime());
+                                    _this.play(_this.getCurrentTime());
                                 }
                                 _this.emitter.emit(exports.ReplayerEvents.LoadStylesheetEnd);
                                 if (timer_1) {
                                     window.clearTimeout(timer_1);
                                 }
+                                unsubscribe_1();
                             }
                         });
                     }
@@ -3362,16 +3435,16 @@ var rrweb = (function (exports) {
                     this.emitter.emit(exports.ReplayerEvents.LoadStylesheetStart);
                     timer_1 = window.setTimeout(function () {
                         if (beforeLoadState_1.matches('playing')) {
-                            _this.resume(_this.getCurrentTime());
+                            _this.play(_this.getCurrentTime());
                         }
                         timer_1 = -1;
+                        unsubscribe_1();
                     }, this.config.loadTimeout);
                 }
             }
         };
         Replayer.prototype.applyIncremental = function (e, isSync) {
             var _this = this;
-            var baselineTime = this.service.state.context.baselineTime;
             var d = e.data;
             switch (d.source) {
                 case exports.IncrementalSource.Mutation: {
@@ -3395,7 +3468,9 @@ var rrweb = (function (exports) {
                                 doAction: function () {
                                     _this.moveAndHover(d, p.x, p.y, p.id);
                                 },
-                                delay: p.timeOffset + e.timestamp - baselineTime,
+                                delay: p.timeOffset +
+                                    e.timestamp -
+                                    _this.service.state.context.baselineTime,
                             };
                             _this.timer.addAction(action);
                         });
@@ -3540,17 +3615,31 @@ var rrweb = (function (exports) {
                         realParent.removeChild(target);
                     }
                     else {
-                        parent.removeChild(target);
+                        try {
+                            parent.removeChild(target);
+                        }
+                        catch (e) {
+                            console.error(e.message);
+                            var parent_1 = target.parentNode;
+                            if (parent_1 != null) {
+                                parent_1.removeChild(target);
+                            }
+                            else {
+                                console.error("target parent is null can not execute removeChild", target);
+                            }
+                        }
                     }
                 }
             });
             var legacy_missingNodeMap = __assign({}, this.legacy_missingNodeRetryMap);
             var queue = [];
+            var queueCache = {};
             var appendNode = function (mutation) {
                 if (!_this.iframe.contentDocument) {
                     return console.warn('Looks like your replayer has been destroyed.');
                 }
                 var parent = mirror.getNode(mutation.parentId);
+                var nodeId = mutation.node.id;
                 if (!parent) {
                     return queue.push(mutation);
                 }
@@ -3573,7 +3662,13 @@ var rrweb = (function (exports) {
                     next = mirror.getNode(mutation.nextId);
                 }
                 if (mutation.nextId && mutation.nextId !== -1 && !next) {
-                    return queue.push(mutation);
+                    if (!queueCache[nodeId]) {
+                        queueCache[nodeId] = mutation;
+                        return queue.push(mutation);
+                    }
+                    else {
+                        return console.warn("nextId重复节点,无需重复插入");
+                    }
                 }
                 var target = buildNodeWithSN(mutation.node, _this.iframe.contentDocument, mirror.map, true);
                 if (mutation.previousId === -1 || mutation.nextId === -1) {
@@ -3587,12 +3682,36 @@ var rrweb = (function (exports) {
                     parent.insertBefore(target, previous.nextSibling);
                 }
                 else if (next && next.parentNode) {
-                    parent.contains(next)
-                        ? parent.insertBefore(target, next)
-                        : parent.insertBefore(target, null);
+                    try {
+                        parent.contains(next)
+                            ? parent.insertBefore(target, next)
+                            : parent.insertBefore(target, null);
+                    }
+                    catch (e) {
+                        console.error(e.message);
+                        var parent_2 = target.parentNode;
+                        if (parent_2 != null) {
+                            parent_2.insertBefore(target, null);
+                        }
+                        else {
+                            console.error("target parent is null can not execute insertBefore", target);
+                        }
+                    }
                 }
                 else {
-                    parent.appendChild(target);
+                    try {
+                        parent.appendChild(target);
+                    }
+                    catch (e) {
+                        console.error(e.message);
+                        var parent_3 = target.parentNode;
+                        if (parent_3 != null) {
+                            parent_3.appendChild(target);
+                        }
+                        else {
+                            console.error("target parent is null can not execute appendChild", target);
+                        }
+                    }
                 }
                 if (mutation.previousId || mutation.nextId) {
                     _this.legacy_resolveMissingNode(legacy_missingNodeMap, parent, target, mutation);
@@ -3608,6 +3727,7 @@ var rrweb = (function (exports) {
                 var mutation = queue.shift();
                 appendNode(mutation);
             }
+            queueCache = {};
             if (Object.keys(legacy_missingNodeMap).length) {
                 Object.assign(this.legacy_missingNodeRetryMap, legacy_missingNodeMap);
             }
@@ -3632,11 +3752,16 @@ var rrweb = (function (exports) {
                 for (var attributeName in mutation.attributes) {
                     if (typeof attributeName === 'string') {
                         var value = mutation.attributes[attributeName];
+                        var node = target;
                         if (value !== null) {
-                            target.setAttribute(attributeName, value);
+                            if (node.setAttribute) {
+                                node.setAttribute(attributeName, value);
+                            }
                         }
                         else {
-                            target.removeAttribute(attributeName);
+                            if (node.removeAttribute) {
+                                node.removeAttribute(attributeName);
+                            }
                         }
                     }
                 }
@@ -3727,14 +3852,15 @@ var rrweb = (function (exports) {
             return (event.data.source > exports.IncrementalSource.Mutation &&
                 event.data.source <= exports.IncrementalSource.Input);
         };
-        Replayer.prototype.restoreSpeed = function () {
-            if (this.noramlSpeed === -1) {
+        Replayer.prototype.backToNormal = function () {
+            this.nextUserInteractionEvent = null;
+            if (this.speedService.state.matches('normal')) {
                 return;
             }
-            var payload = { speed: this.noramlSpeed };
-            this.setConfig(payload);
-            this.emitter.emit(exports.ReplayerEvents.SkipEnd, payload);
-            this.noramlSpeed = -1;
+            this.speedService.send({ type: 'BACK_TO_NORMAL' });
+            this.emitter.emit(exports.ReplayerEvents.SkipEnd, {
+                speed: this.speedService.state.context.normalSpeed,
+            });
         };
         Replayer.prototype.warnNodeNotFound = function (d, id) {
             if (!this.config.showWarning) {

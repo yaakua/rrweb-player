@@ -16,8 +16,8 @@
   <body>
  <label>开始时间:</label> <input type="text" id="timeOffset">
  <button onclick="resetPlayTime()">重设播放开始位置</button>
-    <script src="./bundle.js"></script>
-    <script src="./events.js"></script>
+    <script src="../dist/index.js"></script>
+    <script src="./events6.js"></script>
     <script>
       // eslint-disable-next-line
       const component = new rrwebPlayer({
@@ -25,9 +25,9 @@
         data: {
           events,
           skipInactive: true,
-          showDebug: false,
+          showDebug: true,
           autoPlay: false,
-          showWarning: false,
+          showWarning: true,
           //自定义播放时，某些组件不显示或者显示
           customStyles:`
                      .play_hidden {display:none !important;}
